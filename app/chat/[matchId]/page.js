@@ -13,7 +13,11 @@ export default function Chat() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [onlineIds, setOnlineIds] = useState(new Set());
+  const [otherTyping, setOtherTyping] = useState(false);
   const bottomRef = useRef(null);
+  const channelRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -74,19 +78,45 @@ export default function Chat() {
             }
           }
         )
+        .on("broadcast", { event: "typing" }, (payload) => {
+          if (payload.payload.userId === matchId) {
+            setOtherTyping(true);
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              setOtherTyping(false);
+            }, 3000);
+          }
+        })
         .subscribe();
+
+      channelRef.current = channel;
     }
 
     init();
 
     return () => {
       if (channel) supabase.removeChannel(channel);
+      clearTimeout(typingTimeoutRef.current);
     };
   }, [matchId, router]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, otherTyping]);
+
+  function handleInputChange(e) {
+    setText(e.target.value);
+
+    const now = Date.now();
+    if (myId && channelRef.current && now - lastTypingSentRef.current > 2000) {
+      lastTypingSentRef.current = now;
+      channelRef.current.send({
+        type: "broadcast",
+        event: "typing",
+        payload: { userId: myId },
+      });
+    }
+  }
 
   async function handleSend(e) {
     e.preventDefault();
@@ -102,6 +132,13 @@ export default function Chat() {
     });
 
     setText("");
+  }
+
+  function formatTime(timestamp) {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   if (loading) return <p>Loading chat...</p>;
@@ -127,15 +164,29 @@ export default function Chat() {
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`max-w-[70%] px-3 py-2 rounded-lg text-sm ${
-              m.sender_id === myId
-                ? "bg-indigo-600 text-white self-end"
-                : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 self-start"
+            className={`flex flex-col max-w-[70%] ${
+              m.sender_id === myId ? "self-end items-end" : "self-start items-start"
             }`}
           >
-            {m.content}
+            <div
+              className={`px-3 py-2 rounded-lg text-sm ${
+                m.sender_id === myId
+                  ? "bg-indigo-600 text-white"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+              }`}
+            >
+              {m.content}
+            </div>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 px-1">
+              {formatTime(m.created_at)}
+            </span>
           </div>
         ))}
+        {otherTyping && (
+          <div className="self-start bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm px-3 py-2 rounded-lg italic">
+            {otherName} is typing...
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={handleSend} className="border-t dark:border-gray-700 p-3 flex gap-2">
@@ -143,7 +194,7 @@ export default function Chat() {
           className="flex-1 border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2"
           placeholder="Type a message..."
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleInputChange}
         />
         <button
           type="submit"
