@@ -121,17 +121,22 @@ export default function Matches() {
     setMyLikes((prev) => [...prev, otherId]);
   }
 
-  // Online people first, compatibility score decides the order within
-  // each group. Recomputes automatically whenever someone comes online
-  // or goes offline.
+  // People who liked you come first (strongest signal), then online
+  // people, then compatibility score decides the rest. Recomputes
+  // automatically whenever likes or online status change.
   const sortedRanked = useMemo(() => {
     return [...ranked].sort((a, b) => {
+      const aLikedMe = theirLikes.includes(a.profile.id);
+      const bLikedMe = theirLikes.includes(b.profile.id);
+      if (aLikedMe !== bLikedMe) return aLikedMe ? -1 : 1;
+
       const aOnline = onlineIds.has(a.profile.id);
       const bOnline = onlineIds.has(b.profile.id);
       if (aOnline !== bOnline) return aOnline ? -1 : 1;
+
       return b.score - a.score;
     });
-  }, [ranked, onlineIds]);
+  }, [ranked, onlineIds, theirLikes]);
 
   if (loading) return <p>Loading matches...</p>;
 
@@ -168,11 +173,28 @@ export default function Matches() {
           const isOnline = onlineIds.has(profile.id);
           const prevOnline =
             index > 0 ? onlineIds.has(sortedRanked[index - 1].profile.id) : null;
-          const showOfflineDivider = !isOnline && prevOnline !== false && index > 0;
+          const prevLiked =
+            index > 0
+              ? theirLikes.includes(sortedRanked[index - 1].profile.id)
+              : null;
+          const showOfflineDivider =
+            !isOnline && prevOnline !== false && index > 0 && prevLiked === theyLiked;
+          const showEndOfLikedDivider =
+            !theyLiked && prevLiked === true && index > 0;
 
           return (
             <div key={profile.id}>
-              {index === 0 && isOnline && (
+              {index === 0 && theyLiked && (
+                <p className="text-xs uppercase tracking-wide text-pink-600 dark:text-pink-400 mb-1">
+                  💌 Liked You
+                </p>
+              )}
+              {showEndOfLikedDivider && (
+                <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-2 mb-1">
+                  More Matches
+                </p>
+              )}
+              {!showEndOfLikedDivider && index === 0 && !theyLiked && isOnline && (
                 <p className="text-xs uppercase tracking-wide text-green-600 dark:text-green-400 mb-1">
                   Online
                 </p>
@@ -183,7 +205,9 @@ export default function Matches() {
                 </p>
               )}
               <div
-                className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm flex justify-between items-center"
+                className={`bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm flex justify-between items-center ${
+                  theyLiked && !mutual ? "border-2 border-pink-400" : ""
+                }`}
               >
               <div>
                 <p className="font-semibold text-lg text-gray-800 dark:text-gray-100 flex items-center gap-2">
