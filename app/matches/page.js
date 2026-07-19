@@ -84,6 +84,7 @@ export default function Matches() {
       .from("profiles")
       .select("*")
       .eq("gender", myProfile.gender)
+      .eq("year", myProfile.year)
       .neq("id", user.id);
 
     const scored = (others || [])
