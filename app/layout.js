@@ -1,5 +1,6 @@
 import "./globals.css";
 import ThemeToggle from "./ThemeToggle";
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata = {
   title: "Thapar Roomie Finder",
@@ -54,6 +55,7 @@ export default function RootLayout({ children }) {
           </div>
         </nav>
         <main className="max-w-3xl mx-auto p-6">{children}</main>
+        <Analytics />
       </body>
     </html>
   );
