@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { subscribeOnlineUsers } from "../../../lib/presence";
+import { markConversationRead } from "../../../lib/notifications";
 
 export default function Chat() {
   const { matchId } = useParams(); // this is the other user's id
@@ -10,8 +12,14 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [onlineIds, setOnlineIds] = useState(new Set());
   const bottomRef = useRef(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = subscribeOnlineUsers(setOnlineIds);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let channel;
@@ -45,6 +53,7 @@ export default function Chat() {
 
       setMessages(history || []);
       setLoading(false);
+      markConversationRead(user.id, matchId);
 
       channel = supabase
         .channel(`chat-${a}-${b}`)
@@ -59,6 +68,9 @@ export default function Chat() {
           (payload) => {
             if (payload.new.user_b === b) {
               setMessages((prev) => [...prev, payload.new]);
+              if (payload.new.sender_id === matchId) {
+                markConversationRead(user.id, matchId);
+              }
             }
           }
         )
@@ -95,8 +107,22 @@ export default function Chat() {
   if (loading) return <p>Loading chat...</p>;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm flex flex-col h-[70vh]">
-      <div className="border-b px-5 py-3 font-semibold">{otherName}</div>
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm flex flex-col h-[70vh]">
+      <div className="border-b dark:border-gray-700 px-5 py-3 flex items-center gap-2">
+        <span className="font-semibold text-gray-800 dark:text-gray-100">
+          {otherName}
+        </span>
+        <span
+          className={`inline-block w-2.5 h-2.5 rounded-full ${
+            onlineIds.has(matchId)
+              ? "bg-green-500"
+              : "bg-gray-300 dark:bg-gray-600"
+          }`}
+        />
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {onlineIds.has(matchId) ? "Online" : "Offline"}
+        </span>
+      </div>
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
         {messages.map((m) => (
           <div
@@ -104,7 +130,7 @@ export default function Chat() {
             className={`max-w-[70%] px-3 py-2 rounded-lg text-sm ${
               m.sender_id === myId
                 ? "bg-indigo-600 text-white self-end"
-                : "bg-gray-100 text-gray-800 self-start"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 self-start"
             }`}
           >
             {m.content}
@@ -112,9 +138,9 @@ export default function Chat() {
         ))}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSend} className="border-t p-3 flex gap-2">
+      <form onSubmit={handleSend} className="border-t dark:border-gray-700 p-3 flex gap-2">
         <input
-          className="flex-1 border rounded-lg px-3 py-2"
+          className="flex-1 border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2"
           placeholder="Type a message..."
           value={text}
           onChange={(e) => setText(e.target.value)}

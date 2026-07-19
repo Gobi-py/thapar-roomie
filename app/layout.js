@@ -1,5 +1,7 @@
 import "./globals.css";
 import ThemeToggle from "./ThemeToggle";
+import PresenceTracker from "./PresenceTracker";
+import NotificationToast from "./NotificationToast";
 
 export const metadata = {
   title: "Thapar Roomie Finder",
@@ -24,6 +26,8 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="min-h-screen bg-slate-50 dark:bg-gray-900 transition-colors">
+        <PresenceTracker />
+        <NotificationToast />
         <nav className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 px-6 py-4 flex justify-between items-center shadow-sm">
           <a
             href="/matches"

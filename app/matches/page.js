@@ -3,17 +3,54 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { computeCompatibility } from "../../lib/matching";
+import { subscribeOnlineUsers } from "../../lib/presence";
+import { getUnreadCounts } from "../../lib/notifications";
 
 export default function Matches() {
   const [me, setMe] = useState(null);
   const [ranked, setRanked] = useState([]);
   const [myLikes, setMyLikes] = useState([]);
   const [theirLikes, setTheirLikes] = useState([]);
+  const [onlineIds, setOnlineIds] = useState(new Set());
+  const [unreadCounts, setUnreadCounts] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     load();
+    const unsubscribe = subscribeOnlineUsers(setOnlineIds);
+
+    let channel;
+    async function watchForNewMessages() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel(`unread-watch-${user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages" },
+          (payload) => {
+            const m = payload.new;
+            if (m.sender_id === user.id) return;
+            if (m.user_a !== user.id && m.user_b !== user.id) return;
+            setUnreadCounts((prev) => {
+              const next = new Map(prev);
+              next.set(m.sender_id, (next.get(m.sender_id) || 0) + 1);
+              return next;
+            });
+          }
+        )
+        .subscribe();
+    }
+    watchForNewMessages();
+
+    return () => {
+      unsubscribe();
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   async function load() {
@@ -66,6 +103,9 @@ export default function Matches() {
       .eq("to_user", user.id);
     setTheirLikes((receivedLikes || []).map((l) => l.from_user));
 
+    const counts = await getUnreadCounts(user.id);
+    setUnreadCounts(counts);
+
     setLoading(false);
   }
 
@@ -85,8 +125,8 @@ export default function Matches() {
 
   if (me && !me.gender) {
     return (
-      <div className="bg-white p-6 rounded-xl shadow-sm">
-        <p className="text-gray-700 mb-3">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+        <p className="text-gray-700 dark:text-gray-300 mb-3">
           We've added gender-based matching. Please update your profile and
           select your gender so we can show you the right matches.
         </p>
@@ -102,10 +142,10 @@ export default function Matches() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Your Top Matches</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Your Top Matches</h1>
       <div className="flex flex-col gap-4">
         {ranked.length === 0 && (
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-gray-400">
             No other profiles yet. Check back once more people sign up!
           </p>
         )}
@@ -117,15 +157,25 @@ export default function Matches() {
           return (
             <div
               key={profile.id}
-              className="bg-white p-5 rounded-xl shadow-sm flex justify-between items-center"
+              className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm flex justify-between items-center"
             >
               <div>
-                <p className="font-semibold text-lg">{profile.name}</p>
-                <p className="text-sm text-gray-500">
+                <p className="font-semibold text-lg text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  {profile.name}
+                  <span
+                    className={`inline-block w-2.5 h-2.5 rounded-full ${
+                      onlineIds.has(profile.id)
+                        ? "bg-green-500"
+                        : "bg-gray-300 dark:bg-gray-600"
+                    }`}
+                    title={onlineIds.has(profile.id) ? "Online" : "Offline"}
+                  />
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {profile.branch} · Year {profile.year}
                 </p>
                 {profile.hostel_pref && (
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                     🏠 {profile.hostel_pref}
                   </p>
                 )}
@@ -133,21 +183,21 @@ export default function Matches() {
                   {score}% compatible
                 </p>
                 {theyLiked && !iLiked && (
-                  <p className="text-xs text-green-600 mt-1">
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                     They liked you!
                   </p>
                 )}
               </div>
-              <div>
+              <div className="relative">
                 {mutual ? (
                   <a
                     href={`/chat/${profile.id}`}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700"
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 inline-block"
                   >
                     Chat 💬
                   </a>
                 ) : iLiked ? (
-                  <span className="text-sm text-gray-400 px-4 py-2">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 px-4 py-2">
                     Liked ✓
                   </span>
                 ) : (
@@ -157,6 +207,13 @@ export default function Matches() {
                   >
                     Like
                   </button>
+                )}
+                {unreadCounts.get(profile.id) > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                    {unreadCounts.get(profile.id) > 9
+                      ? "9+"
+                      : unreadCounts.get(profile.id)}
+                  </span>
                 )}
               </div>
             </div>
