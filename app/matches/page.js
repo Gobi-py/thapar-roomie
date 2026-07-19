@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { computeCompatibility } from "../../lib/matching";
@@ -121,6 +121,18 @@ export default function Matches() {
     setMyLikes((prev) => [...prev, otherId]);
   }
 
+  // Online people first, compatibility score decides the order within
+  // each group. Recomputes automatically whenever someone comes online
+  // or goes offline.
+  const sortedRanked = useMemo(() => {
+    return [...ranked].sort((a, b) => {
+      const aOnline = onlineIds.has(a.profile.id);
+      const bOnline = onlineIds.has(b.profile.id);
+      if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      return b.score - a.score;
+    });
+  }, [ranked, onlineIds]);
+
   if (loading) return <p>Loading matches...</p>;
 
   if (me && !me.gender) {
@@ -149,26 +161,40 @@ export default function Matches() {
             No other profiles yet. Check back once more people sign up!
           </p>
         )}
-        {ranked.map(({ profile, score }) => {
+        {sortedRanked.map(({ profile, score }, index) => {
           const iLiked = myLikes.includes(profile.id);
           const theyLiked = theirLikes.includes(profile.id);
           const mutual = iLiked && theyLiked;
+          const isOnline = onlineIds.has(profile.id);
+          const prevOnline =
+            index > 0 ? onlineIds.has(sortedRanked[index - 1].profile.id) : null;
+          const showOfflineDivider = !isOnline && prevOnline !== false && index > 0;
 
           return (
-            <div
-              key={profile.id}
-              className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm flex justify-between items-center"
-            >
+            <div key={profile.id}>
+              {index === 0 && isOnline && (
+                <p className="text-xs uppercase tracking-wide text-green-600 dark:text-green-400 mb-1">
+                  Online
+                </p>
+              )}
+              {showOfflineDivider && (
+                <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-2 mb-1">
+                  Offline
+                </p>
+              )}
+              <div
+                className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm flex justify-between items-center"
+              >
               <div>
                 <p className="font-semibold text-lg text-gray-800 dark:text-gray-100 flex items-center gap-2">
                   {profile.name}
                   <span
                     className={`inline-block w-2.5 h-2.5 rounded-full ${
-                      onlineIds.has(profile.id)
+                      isOnline
                         ? "bg-green-500"
                         : "bg-gray-300 dark:bg-gray-600"
                     }`}
-                    title={onlineIds.has(profile.id) ? "Online" : "Offline"}
+                    title={isOnline ? "Online" : "Offline"}
                   />
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -215,6 +241,7 @@ export default function Matches() {
                       : unreadCounts.get(profile.id)}
                   </span>
                 )}
+              </div>
               </div>
             </div>
           );
