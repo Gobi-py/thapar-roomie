@@ -134,6 +134,10 @@ export default function Matches() {
       const bOnline = onlineIds.has(b.profile.id);
       if (aOnline !== bOnline) return aOnline ? -1 : 1;
 
+      if (a.profile.year !== b.profile.year) {
+        return a.profile.year - b.profile.year;
+      }
+
       return b.score - a.score;
     });
   }, [ranked, onlineIds, theirLikes]);
